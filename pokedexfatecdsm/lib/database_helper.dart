@@ -1,7 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart';
-import 'package:sqflite/sqflite.dart';
 import 'models/usuario.dart';
 import 'models/pokemon.dart';
 
@@ -10,115 +8,235 @@ class DatabaseHelper {
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
 
-  Database? _db;
+  // URL base da API Node.js
+  static const String _baseUrl = 'http://localhost:3000/api';
 
-  Future<Database> get database async {
-    if (_db != null) return _db!;
-    _db = await _initDb();
-    return _db!;
+  // Headers padrão para requisições
+  final Map<String, String> _headers = {'Content-Type': 'application/json'};
+
+  String? _token; // Token JWT para autenticação
+
+  // Definir token de autenticação
+  void setToken(String token) {
+    _token = token;
   }
 
-  Future<Database> _initDb() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'app.db');
-
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE,
-            senha TEXT
-          )
-        ''');
-
-        await db.execute('''
-          CREATE TABLE pokemons (
-            id INTEGER PRIMARY KEY,
-            nome TEXT,
-            tipo TEXT,
-            imagem TEXT
-          )
-        ''');
-
-        await db.insert('users', {'email': 'fatec@pokemon.com', 'senha': 'pikachu'});
-
-        List<Map<String, dynamic>> pokemons = [
-          {'id': 1, 'nome': 'Bulbasaur', 'tipo': 'Grass/Poison', 'imagem': 'assets/images/bulbasaur.png'},
-          {'id': 2, 'nome': 'Ivysaur', 'tipo': 'Grass/Poison', 'imagem': 'assets/images/ivysaur.png'},
-          {'id': 3, 'nome': 'Venusaur', 'tipo': 'Grass/Poison', 'imagem': 'assets/images/venusaur.png'},
-          {'id': 4, 'nome': 'Charmander', 'tipo': 'Fire', 'imagem': 'assets/images/charmander.png'},
-          {'id': 5, 'nome': 'Charmeleon', 'tipo': 'Fire', 'imagem': 'assets/images/charmeleon.png'},
-          {'id': 6, 'nome': 'Charizard', 'tipo': 'Fire/Flying', 'imagem': 'assets/images/charizard.png'},
-          {'id': 7, 'nome': 'Squirtle', 'tipo': 'Water', 'imagem': 'assets/images/squirtle.png'},
-          {'id': 8, 'nome': 'Wartortle', 'tipo': 'Water', 'imagem': 'assets/images/wartortle.png'},
-          {'id': 9, 'nome': 'Blastoise', 'tipo': 'Water', 'imagem': 'assets/images/blastoise.png'},
-          {'id': 10, 'nome': 'Caterpie', 'tipo': 'Bug', 'imagem': 'assets/images/caterpie.png'},
-        ];
-
-        for (var p in pokemons) {
-          await db.insert('pokemons', p);
-        }
-      },
-    );
+  // Obter headers com token se disponível
+  Map<String, String> _getHeaders() {
+    final headers = Map<String, String>.from(_headers);
+    if (_token != null) {
+      headers['Authorization'] = 'Bearer $_token';
+    }
+    return headers;
   }
 
+  // Autenticar usuário
   Future<Usuario?> getUser(String email, String senha) async {
-    final db = await database;
-    final result = await db.query(
-      'users',
-      where: 'email = ? AND senha = ?',
-      whereArgs: [email, senha],
-    );
-    if (result.isNotEmpty) {
-      return Usuario(
-        id: result.first['id'] as int,
-        email: email,
-        senha: senha,
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/usuarios/login'),
+        headers: _headers,
+        body: jsonEncode({'email': email, 'senha': senha}),
       );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setToken(data['token']);
+
+        return Usuario(
+          id: data['user']['id'],
+          email: data['user']['email'],
+          senha: senha,
+        );
+      }
+      return null;
+    } catch (e) {
+      print('Erro ao autenticar usuário: $e');
+      return null;
     }
-    return null;
   }
 
+  // Buscar todos os pokémons
   Future<List<Pokemon>> getPokemons() async {
-    final db = await database;
-    final result = await db.query('pokemons');
-    return result.map((e) => Pokemon(
-      id: e['id'] as int,
-      nome: e['nome'] as String,
-      tipo: e['tipo'] as String,
-      imagem: e['imagem'] as String,
-    )).toList();
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/pokemons'),
+        headers: _getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List<dynamic> pokemonsList = data['pokemons'] ?? data;
+
+        return pokemonsList
+            .map(
+              (e) => Pokemon(
+                id: e['id'] as int,
+                nome: e['nome'] as String,
+                tipo: e['tipo'] as String,
+                imagem: e['imagem'] as String,
+              ),
+            )
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print('Erro ao buscar pokémons: $e');
+      return [];
+    }
   }
 
+  // Buscar pokémon por ID
+  Future<Pokemon?> getPokemon(int id) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/pokemons/$id'),
+        headers: _getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return Pokemon(
+          id: data['id'] as int,
+          nome: data['nome'] as String,
+          tipo: data['tipo'] as String,
+          imagem: data['imagem'] as String,
+        );
+      }
+      return null;
+    } catch (e) {
+      print('Erro ao buscar pokémon: $e');
+      return null;
+    }
+  }
+
+  // Buscar pokémons por nome
+  Future<List<Pokemon>> searchPokemonsByName(String nome) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/pokemons/search/$nome'),
+        headers: _getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> pokemonsList = jsonDecode(response.body);
+        return pokemonsList
+            .map(
+              (e) => Pokemon(
+                id: e['id'] as int,
+                nome: e['nome'] as String,
+                tipo: e['tipo'] as String,
+                imagem: e['imagem'] as String,
+              ),
+            )
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print('Erro ao buscar pokémons por nome: $e');
+      return [];
+    }
+  }
+
+  // Criar novo usuário
+  Future<bool> createUser(String email, String senha) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/usuarios'),
+        headers: _headers,
+        body: jsonEncode({'email': email, 'senha': senha}),
+      );
+
+      return response.statusCode == 201;
+    } catch (e) {
+      print('Erro ao criar usuário: $e');
+      return false;
+    }
+  }
+
+  // Criar novo pokémon
+  Future<bool> createPokemon(Pokemon pokemon) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/pokemons'),
+        headers: _getHeaders(),
+        body: jsonEncode(pokemon.toMap()),
+      );
+
+      return response.statusCode == 201;
+    } catch (e) {
+      print('Erro ao criar pokémon: $e');
+      return false;
+    }
+  }
+
+  // Atualizar pokémon
+  Future<bool> updatePokemon(Pokemon pokemon) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/pokemons/${pokemon.id}'),
+        headers: _getHeaders(),
+        body: jsonEncode(pokemon.toMap()),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Erro ao atualizar pokémon: $e');
+      return false;
+    }
+  }
+
+  // Deletar pokémon
+  Future<bool> deletePokemon(int id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/pokemons/$id'),
+        headers: _getHeaders(),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Erro ao deletar pokémon: $e');
+      return false;
+    }
+  }
+
+  // Sincronizar com servidor (mantido para compatibilidade)
+  Future<void> syncToServer() async {
+    try {
+      // Esta função agora pode ser usada para sincronizar dados offline
+      // ou realizar outras operações de sincronização se necessário
+      print('Sincronização iniciada...');
+
+      // Como agora trabalhamos diretamente com a API,
+      // a sincronização é automática a cada operação
+      print('Sincronização concluída!');
+    } catch (e) {
+      print('Erro na sincronização: $e');
+    }
+  }
+
+  // Método legado mantido para compatibilidade
   Future<void> syncToMySQL() async {
-    final db = await database;
+    await syncToServer();
+  }
 
-    final usuarios = await db.query('usuarios');
-    for (var usuario in usuarios) {
-      await http.post(
-        Uri.parse('https://url-do-servidor.com/api/sync_user.php'),
-        body: {
-          'id': usuario['id'].toString(),
-          'email': usuario['email'].toString(),
-          'senha': usuario['senha'].toString(),
-        },
+  // Verificar conectividade com a API
+  Future<bool> isApiAvailable() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/../health'),
+        headers: _headers,
       );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('API não disponível: $e');
+      return false;
     }
+  }
 
-    final pokemons = await db.query('pokemons');
-    for (var p in pokemons) {
-      await http.post(
-        Uri.parse('https://url-do-servidor.com/api/sync_pokemon.php'),
-        body: {
-          'id': p['id'].toString(),
-          'nome': p['nome'].toString(),
-          'tipo': p['tipo'].toString(),
-          'imagem': p['imagem'].toString().split('/').last,
-        },
-      );
-    }
+  // Limpar token (logout)
+  void clearToken() {
+    _token = null;
   }
 }
