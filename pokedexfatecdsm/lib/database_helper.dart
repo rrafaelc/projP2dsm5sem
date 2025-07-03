@@ -33,25 +33,47 @@ class DatabaseHelper {
   // Autenticar usuário
   Future<Usuario?> getUser(String email, String senha) async {
     try {
+      print('🔐 Tentando login com: $email');
+      print('🌐 URL: $_baseUrl/usuarios/login');
+
       final response = await http.post(
         Uri.parse('$_baseUrl/usuarios/login'),
         headers: _headers,
         body: jsonEncode({'email': email, 'senha': senha}),
       );
 
+      print('📊 Status Code: ${response.statusCode}');
+      print('📝 Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setToken(data['token']);
 
+        print('✅ Login realizado com sucesso!');
         return Usuario(
           id: data['user']['id'],
           email: data['user']['email'],
           senha: senha,
         );
+      } else if (response.statusCode == 401) {
+        print('❌ Credenciais inválidas');
+        return null;
+      } else {
+        print('❌ Erro no servidor: ${response.statusCode}');
+        print('📄 Detalhes: ${response.body}');
+        return null;
       }
-      return null;
     } catch (e) {
-      print('Erro ao autenticar usuário: $e');
+      print('💥 Exception ao autenticar usuário: $e');
+      print('🔍 Tipo da exception: ${e.runtimeType}');
+
+      // Verificar se é erro de conexão
+      if (e.toString().contains('Failed host lookup') ||
+          e.toString().contains('Connection refused') ||
+          e.toString().contains('SocketException')) {
+        print('🌐 Erro de conexão - Verifique se a API está rodando');
+      }
+
       return null;
     }
   }
@@ -74,7 +96,7 @@ class DatabaseHelper {
                 id: e['id'] as int,
                 nome: e['nome'] as String,
                 tipo: e['tipo'] as String,
-                imagem: e['imagem'] as String,
+                imagem: _normalizarCaminhoImagem(e['imagem'] as String),
               ),
             )
             .toList();
@@ -100,7 +122,7 @@ class DatabaseHelper {
           id: data['id'] as int,
           nome: data['nome'] as String,
           tipo: data['tipo'] as String,
-          imagem: data['imagem'] as String,
+          imagem: _normalizarCaminhoImagem(data['imagem'] as String),
         );
       }
       return null;
@@ -126,7 +148,7 @@ class DatabaseHelper {
                 id: e['id'] as int,
                 nome: e['nome'] as String,
                 tipo: e['tipo'] as String,
-                imagem: e['imagem'] as String,
+                imagem: _normalizarCaminhoImagem(e['imagem'] as String),
               ),
             )
             .toList();
@@ -224,19 +246,77 @@ class DatabaseHelper {
   // Verificar conectividade com a API
   Future<bool> isApiAvailable() async {
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/../health'),
-        headers: _headers,
-      );
-      return response.statusCode == 200;
+      print('🔍 Testando conectividade com a API...');
+      print('🌐 URL de teste: http://localhost:3000/health');
+
+      final response = await http
+          .get(Uri.parse('http://localhost:3000/health'), headers: _headers)
+          .timeout(const Duration(seconds: 10));
+
+      print('📊 Status da API: ${response.statusCode}');
+      print('📝 Resposta: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('✅ API está funcionando!');
+        return true;
+      } else {
+        print('❌ API retornou erro: ${response.statusCode}');
+        return false;
+      }
     } catch (e) {
-      print('API não disponível: $e');
+      print('💥 Erro ao conectar com a API: $e');
+      print('🔍 Tipo do erro: ${e.runtimeType}');
+
+      if (e.toString().contains('TimeoutException')) {
+        print('⏰ Timeout - API pode estar lenta ou não disponível');
+      } else if (e.toString().contains('Failed host lookup')) {
+        print('🌐 Erro de DNS - Verifique o IP da API');
+      } else if (e.toString().contains('Connection refused')) {
+        print('🚫 Conexão recusada - API pode não estar rodando');
+      }
+
       return false;
     }
+  }
+
+  // Testar login com verificação de conectividade
+  Future<Usuario?> testLogin() async {
+    print('🧪 Iniciando teste de login...');
+
+    // Primeiro, testar conectividade
+    final isConnected = await isApiAvailable();
+    if (!isConnected) {
+      print('❌ Não foi possível conectar com a API');
+      return null;
+    }
+
+    // Tentar login com credenciais padrão
+    return await getUser('fatec@pokemon.com', 'pikachu');
   }
 
   // Limpar token (logout)
   void clearToken() {
     _token = null;
+  }
+
+  // Normalizar caminho da imagem para garantir compatibilidade
+  String _normalizarCaminhoImagem(String imagem) {
+    // Se já tem o caminho completo, retorna como está
+    if (imagem.startsWith('assets/images/')) {
+      return imagem;
+    }
+
+    // Se tem apenas o nome do arquivo, adiciona o caminho
+    if (!imagem.contains('/')) {
+      return 'assets/images/$imagem';
+    }
+
+    // Se tem caminho mas não começa com assets/images/, corrige
+    if (imagem.contains('/') && !imagem.startsWith('assets/')) {
+      final nomeArquivo = imagem.split('/').last;
+      return 'assets/images/$nomeArquivo';
+    }
+
+    return imagem;
   }
 }

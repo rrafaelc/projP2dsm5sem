@@ -29,16 +29,16 @@ async function seed() {
     console.log('🐾 Criando pokémons...');
     
     const pokemons = [
-      { id: 1, nome: 'Bulbasaur', tipo: 'Grass/Poison', imagem: 'bulbasaur.png' },
-      { id: 2, nome: 'Ivysaur', tipo: 'Grass/Poison', imagem: 'ivysaur.png' },
-      { id: 3, nome: 'Venusaur', tipo: 'Grass/Poison', imagem: 'venusaur.png' },
-      { id: 4, nome: 'Charmander', tipo: 'Fire', imagem: 'charmander.png' },
-      { id: 5, nome: 'Charmeleon', tipo: 'Fire', imagem: 'charmeleon.png' },
-      { id: 6, nome: 'Charizard', tipo: 'Fire/Flying', imagem: 'charizard.png' },
-      { id: 7, nome: 'Squirtle', tipo: 'Water', imagem: 'squirtle.png' },
-      { id: 8, nome: 'Wartortle', tipo: 'Water', imagem: 'wartortle.png' },
-      { id: 9, nome: 'Blastoise', tipo: 'Water', imagem: 'blastoise.png' },
-      { id: 10, nome: 'Caterpie', tipo: 'Bug', imagem: 'caterpie.png' }
+      { id: 1, nome: 'Bulbasaur', tipo: 'Grass/Poison', imagem: 'assets/images/bulbasaur.png' },
+      { id: 2, nome: 'Ivysaur', tipo: 'Grass/Poison', imagem: 'assets/images/ivysaur.png' },
+      { id: 3, nome: 'Venusaur', tipo: 'Grass/Poison', imagem: 'assets/images/venusaur.png' },
+      { id: 4, nome: 'Charmander', tipo: 'Fire', imagem: 'assets/images/charmander.png' },
+      { id: 5, nome: 'Charmeleon', tipo: 'Fire', imagem: 'assets/images/charmeleon.png' },
+      { id: 6, nome: 'Charizard', tipo: 'Fire/Flying', imagem: 'assets/images/charizard.png' },
+      { id: 7, nome: 'Squirtle', tipo: 'Water', imagem: 'assets/images/squirtle.png' },
+      { id: 8, nome: 'Wartortle', tipo: 'Water', imagem: 'assets/images/wartortle.png' },
+      { id: 9, nome: 'Blastoise', tipo: 'Water', imagem: 'assets/images/blastoise.png' },
+      { id: 10, nome: 'Caterpie', tipo: 'Bug', imagem: 'assets/images/caterpie.png' }
     ];
 
     const pokemonsCriados = await prisma.pokemon.createMany({
