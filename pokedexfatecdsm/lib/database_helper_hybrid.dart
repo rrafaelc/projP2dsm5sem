@@ -11,8 +11,7 @@ class DatabaseHelper {
   DatabaseHelper._internal();
 
   // URL base da API Node.js (para login e sincronização)
-  static const String _baseUrl =
-      'http://10.0.2.2:3000/api'; // Para emulador Android
+  static const String _baseUrl = 'http://localhost:3000/api';
 
   // Headers padrão para requisições
   final Map<String, String> _headers = {'Content-Type': 'application/json'};
@@ -198,6 +197,50 @@ class DatabaseHelper {
     }
   }
 
+  // Buscar pokémon por ID no SQLite local
+  Future<Pokemon?> getPokemon(int id) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'pokemons',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+      if (result.isNotEmpty) {
+        final data = result.first;
+        return Pokemon(
+          id: data['id'] as int,
+          nome: data['nome'] as String,
+          tipo: data['tipo'] as String,
+          imagem: data['imagem'] as String,
+        );
+      }
+      return null;
+    } catch (e) {
+      print('Erro ao buscar pokémon local: $e');
+      return null;
+    }
+  }
+
+  // Buscar pokémons por nome no SQLite local
+  Future<List<Pokemon>> searchPokemonsByName(String nome) async {
+    try {
+      final db = await database;
+      final result = await db.query(
+        'pokemons',
+        where: 'nome LIKE ?',
+        whereArgs: ['%$nome%'],
+        orderBy: 'id ASC',
+      );
+
+      return _mapearPokemons(result);
+    } catch (e) {
+      print('Erro ao buscar pokémons por nome: $e');
+      return [];
+    }
+  }
+
   // Mapear resultados do SQLite para objetos Pokemon
   List<Pokemon> _mapearPokemons(List<Map<String, dynamic>> resultados) {
     return resultados
@@ -264,12 +307,121 @@ class DatabaseHelper {
     }
   }
 
+  // === OPERAÇÕES OFFLINE (CRUD LOCAL) ===
+
+  // Criar novo pokémon no SQLite local
+  Future<bool> createPokemon(Pokemon pokemon) async {
+    try {
+      final db = await database;
+      await db.insert('pokemons', {
+        'id': pokemon.id,
+        'nome': pokemon.nome,
+        'tipo': pokemon.tipo,
+        'imagem': pokemon.imagem,
+        'synced_at': DateTime.now().toIso8601String(),
+      });
+
+      // Tentar sincronizar com a API se disponível
+      if (await isApiAvailable()) {
+        await _enviarPokemonParaAPI(pokemon);
+      }
+
+      return true;
+    } catch (e) {
+      print('Erro ao criar pokémon local: $e');
+      return false;
+    }
+  }
+
+  // Atualizar pokémon no SQLite local
+  Future<bool> updatePokemon(Pokemon pokemon) async {
+    try {
+      final db = await database;
+      await db.update(
+        'pokemons',
+        {
+          'nome': pokemon.nome,
+          'tipo': pokemon.tipo,
+          'imagem': pokemon.imagem,
+          'synced_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [pokemon.id],
+      );
+
+      // Tentar sincronizar com a API se disponível
+      if (await isApiAvailable()) {
+        await _atualizarPokemonNaAPI(pokemon);
+      }
+
+      return true;
+    } catch (e) {
+      print('Erro ao atualizar pokémon local: $e');
+      return false;
+    }
+  }
+
+  // Deletar pokémon do SQLite local
+  Future<bool> deletePokemon(int id) async {
+    try {
+      final db = await database;
+      await db.delete('pokemons', where: 'id = ?', whereArgs: [id]);
+
+      // Tentar deletar da API se disponível
+      if (await isApiAvailable()) {
+        await _deletarPokemonDaAPI(id);
+      }
+
+      return true;
+    } catch (e) {
+      print('Erro ao deletar pokémon local: $e');
+      return false;
+    }
+  }
+
+  // === MÉTODOS AUXILIARES PARA SINCRONIZAÇÃO ===
+
+  Future<void> _enviarPokemonParaAPI(Pokemon pokemon) async {
+    try {
+      await http.post(
+        Uri.parse('$_baseUrl/pokemons'),
+        headers: _getHeaders(),
+        body: jsonEncode(pokemon.toMap()),
+      );
+    } catch (e) {
+      print('Erro ao enviar pokémon para API: $e');
+    }
+  }
+
+  Future<void> _atualizarPokemonNaAPI(Pokemon pokemon) async {
+    try {
+      await http.put(
+        Uri.parse('$_baseUrl/pokemons/${pokemon.id}'),
+        headers: _getHeaders(),
+        body: jsonEncode(pokemon.toMap()),
+      );
+    } catch (e) {
+      print('Erro ao atualizar pokémon na API: $e');
+    }
+  }
+
+  Future<void> _deletarPokemonDaAPI(int id) async {
+    try {
+      await http.delete(
+        Uri.parse('$_baseUrl/pokemons/$id'),
+        headers: _getHeaders(),
+      );
+    } catch (e) {
+      print('Erro ao deletar pokémon da API: $e');
+    }
+  }
+
   // === VERIFICAÇÃO DE CONECTIVIDADE ===
 
   Future<bool> isApiAvailable() async {
     try {
       final response = await http
-          .get(Uri.parse('http://10.0.2.2:3000/health'), headers: _headers)
+          .get(Uri.parse('http://localhost:3000/health'), headers: _headers)
           .timeout(const Duration(seconds: 5));
 
       return response.statusCode == 200;
@@ -278,47 +430,42 @@ class DatabaseHelper {
     }
   }
 
-  // === VERIFICAÇÃO DE LOGIN AUTOMÁTICO ===
+  // === MÉTODOS LEGADOS PARA COMPATIBILIDADE ===
 
-  // Verificar se há usuário logado no cache local
-  Future<Usuario?> getLoggedUser() async {
+  Future<bool> createUser(String email, String senha) async {
     try {
-      final db = await database;
-      final result = await db.query(
-        'usuarios',
-        orderBy: 'synced_at DESC',
-        limit: 1,
+      final response = await http.post(
+        Uri.parse('$_baseUrl/usuarios'),
+        headers: _headers,
+        body: jsonEncode({'email': email, 'senha': senha}),
       );
-
-      if (result.isNotEmpty) {
-        final userData = result.first;
-        _token = userData['token'] as String?;
-
-        print('✅ Usuário encontrado no cache: ${userData['email']}');
-        return Usuario(
-          id: userData['id'] as int,
-          email: userData['email'] as String,
-          senha: userData['senha'] as String,
-        );
-      }
-
-      print('❌ Nenhum usuário logado encontrado no cache');
-      return null;
+      return response.statusCode == 201;
     } catch (e) {
-      print('💥 Erro ao verificar usuário logado: $e');
-      return null;
+      print('Erro ao criar usuário: $e');
+      return false;
     }
   }
 
-  // Fazer logout (limpar cache local)
-  Future<void> logout() async {
-    try {
-      final db = await database;
-      await db.delete('usuarios');
-      clearToken();
-      print('✅ Logout realizado - cache limpo');
-    } catch (e) {
-      print('💥 Erro ao fazer logout: $e');
+  Future<void> syncToServer() async {
+    await sincronizarPokemons();
+  }
+
+  Future<void> syncToMySQL() async {
+    await sincronizarPokemons();
+  }
+
+  // === MÉTODO DE TESTE ===
+
+  Future<Usuario?> testLogin() async {
+    print('🧪 Iniciando teste de login...');
+
+    final isConnected = await isApiAvailable();
+    if (isConnected) {
+      print('✅ API disponível');
+    } else {
+      print('⚠️ API indisponível - modo offline');
     }
+
+    return await getUser('fatec@pokemon.com', 'pikachu');
   }
 }

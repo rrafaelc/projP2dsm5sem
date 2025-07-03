@@ -104,7 +104,7 @@ class _TestApiScreenState extends State<TestApiScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Teste de Conectividade',
+                      'Teste Híbrido (API + SQLite)',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -112,10 +112,11 @@ class _TestApiScreenState extends State<TestApiScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Este teste vai verificar:\n'
-                      '• Conectividade com a API\n'
-                      '• Login com usuário padrão\n'
-                      '• Busca de pokémons',
+                      'Este teste verifica:\n'
+                      '🔐 Login: API (online) → SQLite (offline)\n'
+                      '📦 Pokémons: SQLite local (sempre offline)\n'
+                      '🔄 Sincronização: API → SQLite quando online\n\n'
+                      'Funciona OFFLINE após primeiro login!',
                       style: TextStyle(fontSize: 14),
                     ),
                   ],
@@ -146,7 +147,7 @@ class _TestApiScreenState extends State<TestApiScreen> {
                       ],
                     )
                   : const Text(
-                      'TESTAR API',
+                      'TESTAR HÍBRIDO',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
